@@ -6,19 +6,18 @@ template <class T, int MAXLEN>
 class cb {
 public:
     cb() : m_len(0),
-           m_buf(new T[MAXLEN]),
            m_buf_end(m_buf + MAXLEN),
            m_head(m_buf),
            m_tail(m_buf) { }
-    virtual ~cb() { delete[] m_buf; }
+    virtual ~cb() { }
 
-    T pop();
+    T    pop();
     void push(const T &val);
-    int get_len() { return m_len; }
+    int  get_len() { return m_len; }
 
 private:
     volatile int m_len;
-    T *m_buf;
+    T m_buf[MAXLEN];
     T *m_buf_end;
 
     T *m_head;
@@ -34,10 +33,10 @@ inline T cb<T, MAXLEN>::pop()
     T retval = *m_head;
     __sync_fetch_and_sub(&m_len, 1);
 
+    m_head++;
+
     if (m_head == m_buf_end) {
         m_head = m_buf;
-    } else {
-        m_head++;
     }
 
     return retval;
@@ -51,10 +50,10 @@ inline void cb<T, MAXLEN>::push(const T &val)
     *m_tail = val;
     __sync_fetch_and_add(&m_len, 1);
 
+    m_tail++;
+
     if (m_tail == m_buf_end) {
         m_tail = m_buf;
-    } else {
-        m_tail++;
     }
 }
 
