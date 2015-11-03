@@ -27,7 +27,7 @@ private:
 };
 
 template <class T, int MAXLEN>
-inline T cb::pop()
+inline T cb<T, MAXLEN>::pop()
 {
     while (m_len == 0);
 
@@ -44,9 +44,9 @@ inline T cb::pop()
 }
 
 template <class T, int MAXLEN>
-inline void cb::push(const T &val)
+inline void cb<T, MAXLEN>::push(const T &val)
 {
-    while (m_len == MAX_LEN);
+    while (m_len == MAXLEN);
 
     *m_tail = val;
     __sync_fetch_and_add(&m_len, 1);
