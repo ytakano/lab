@@ -6,13 +6,15 @@
 #include <iostream>
 #include <thread>
 
-cb_ms<uint64_t, 1024 * 1024> q;
-uint64_t val = 0;
+cb_ms<uint32_t> q(1024 * 1024);
+//cb<uint32_t> q(1024 * 1024);
+
+uint32_t val = 0;
 
 void
 producer()
 {
-    uint64_t n = 0;
+    uint32_t n = 0;
 
     for (;;) {
         q.push(n++);
@@ -23,7 +25,7 @@ void
 consumer()
 {
     for (;;) {
-        //val = q.pop();
+        val = q.pop();
     }
 }
 
@@ -39,7 +41,7 @@ main(int argc, char *argv[])
     else
         std::cout << "no" << std::endl;
 
-    uint64_t v = val;
+    uint32_t v = val;
     for (;;) {
         std::cout << "val = " << val
                   << " (" << (val - v) / 5 << " ops/s)"
