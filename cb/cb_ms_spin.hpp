@@ -1,22 +1,21 @@
-#ifndef CB_MS_HPP
-#define CB_MS_HPP
+#ifndef CB_MS_SPIN_HPP
+#define CB_MS_SPIN_HPP
 
-#include "rtm_lock.hpp"
-#include "tsx-cpuid.h"
+#include "spin_lock.hpp"
 
 #include <iostream>
 
 // multiple writers and single reader
 template <class T>
-class cb_ms {
+class cb_ms_spin {
 public:
-    cb_ms(int len) : m_max_len(len),
-                     m_len(0),
-                     m_buf(new T[len]),
-                     m_buf_end(m_buf + len),
-                     m_head(m_buf),
-                     m_tail(m_buf) { }
-    virtual ~cb_ms() { delete[] m_buf; }
+    cb_ms_spin(int len) : m_max_len(len),
+                          m_len(0),
+                          m_buf(new T[len]),
+                          m_buf_end(m_buf + len),
+                          m_head(m_buf),
+                          m_tail(m_buf) { }
+    virtual ~cb_ms_spin() { delete[] m_buf; }
 
     T    pop();
     void push(const T &val);
@@ -31,18 +30,18 @@ private:
     T *m_head;
     volatile T *m_tail;
 
-    rtm_lock m_rtm_lock;
+    spin_lock m_lock;
 };
 
 template <class T>
-inline T cb_ms<T>::pop()
+inline T cb_ms_spin<T>::pop()
 {
     while (m_len == 0);
 
     T retval = *m_head;
 
     {
-        rtm_transaction transaction(m_rtm_lock);
+        spin_lock_ac lock(m_lock);
         m_len--;
     }
 
@@ -56,11 +55,11 @@ inline T cb_ms<T>::pop()
 }
 
 template <class T>
-inline void cb_ms<T>::push(const T &val)
+inline void cb_ms_spin<T>::push(const T &val)
 {
     while (m_len == m_max_len);
 
-    rtm_transaction transaction(m_rtm_lock);
+    spin_lock_ac lock(m_lock);
 
     *m_tail = val;
     m_len++;
@@ -71,4 +70,4 @@ inline void cb_ms<T>::push(const T &val)
     }
 }
 
-#endif // CB_MS_HPP
+#endif // CB_MS_SPIN_HPP
