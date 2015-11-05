@@ -2,7 +2,7 @@
 #define CB_HPP
 
 // single writer and single reader
-template <class T>
+template <typename T>
 class cb {
 public:
     cb(int len) : m_max_len(len),
@@ -28,7 +28,7 @@ private:
 
 };
 
-template <class T>
+template <typename T>
 inline T cb<T>::pop()
 {
     while (m_len == 0);
@@ -45,7 +45,7 @@ inline T cb<T>::pop()
     return retval;
 }
 
-template <class T>
+template <typename T>
 inline void cb<T>::push(const T &val)
 {
     while (m_len == m_max_len);

@@ -7,7 +7,7 @@
 #include <iostream>
 
 // multiple writers and single reader
-template <class T>
+template <typename T>
 class cb_ms {
 public:
     cb_ms(int len) : m_max_len(len),
@@ -34,7 +34,7 @@ private:
     rtm_lock m_rtm_lock;
 };
 
-template <class T>
+template <typename T>
 inline T cb_ms<T>::pop()
 {
     while (m_len == 0);
@@ -55,7 +55,7 @@ inline T cb_ms<T>::pop()
     return retval;
 }
 
-template <class T>
+template <typename T>
 inline void cb_ms<T>::push(const T &val)
 {
     while (m_len == m_max_len);

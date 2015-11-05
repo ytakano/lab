@@ -3,9 +3,9 @@
 
 #include <stdlib.h>
 
-template <class K, class V, int MAX_LEVEL> class sl;
+template <typename K, typename V, int MAX_LEVEL> class sl;
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 class sl_node {
 public:
     sl_node() { }
@@ -20,7 +20,7 @@ private:
     friend class sl<K, V, MAX_LEVEL>;
 };
 
-template <class K, class V, int MAX_LEVEL = 32>
+template <typename K, typename V, int MAX_LEVEL = 32>
 class sl {
 public:
     sl();
@@ -38,7 +38,7 @@ private:
     uint8_t random_level();
 };
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline sl<K, V, MAX_LEVEL>::sl() : m_size(0), m_level(1)
 {
     m_header = new sl_node<K, V, MAX_LEVEL>;
@@ -51,7 +51,7 @@ inline sl<K, V, MAX_LEVEL>::sl() : m_size(0), m_level(1)
     }
 }
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline sl<K, V, MAX_LEVEL>::~sl()
 {
     auto p = m_header;
@@ -62,7 +62,7 @@ inline sl<K, V, MAX_LEVEL>::~sl()
     }
 }
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline uint8_t sl<K, V, MAX_LEVEL>::random_level()
 {
     uint64_t max_level;
@@ -83,7 +83,7 @@ inline uint8_t sl<K, V, MAX_LEVEL>::random_level()
     return lvl;
 }
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline void sl<K, V, MAX_LEVEL>::insert(const K &key, const V &val)
 {
     sl_node<K, V, MAX_LEVEL> *update[MAX_LEVEL];
@@ -124,7 +124,7 @@ inline void sl<K, V, MAX_LEVEL>::insert(const K &key, const V &val)
     }
 }
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline void sl<K, V, MAX_LEVEL>::erase(const K &key)
 {
     sl_node<K, V, MAX_LEVEL> *update[MAX_LEVEL];
@@ -160,7 +160,7 @@ inline void sl<K, V, MAX_LEVEL>::erase(const K &key)
     delete p;
 }
 
-template <class K, class V, int MAX_LEVEL>
+template <typename K, typename V, int MAX_LEVEL>
 inline const V* sl<K, V, MAX_LEVEL>::find(const K &key)
 {
     auto x = m_header;

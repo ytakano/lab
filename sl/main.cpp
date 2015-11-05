@@ -14,15 +14,9 @@ main(int argc, char *argv[])
 
     s.erase(10);
 
-    s.insert(10, 10);
-    s.insert(20, 20);
-    s.insert(30, 30);
-    s.insert(40, 40);
-    s.insert(50, 50);
-    s.insert(60, 60);
-    s.insert(70, 70);
-    s.insert(80, 80);
-    s.insert(90, 90);
+    for (int i = 0; i < 10000; i++) {
+        s.insert(i, i);
+    }
 
     std::cout << "find(10) = " << *s.find(10) << std::endl;
     std::cout << "find(20) = " << *s.find(20) << std::endl;
@@ -36,6 +30,15 @@ main(int argc, char *argv[])
 
     if (s.find(10) == nullptr)
         std::cout << "not find 10" << std::endl;
+
+    for (int i = 0; i < 10000; i++) {
+        s.erase(i);
+        if (s.find(i) != nullptr)
+            std::cout << "ERROR: i = " << i << std::endl;
+    }
+
+    if (s.find(255) == nullptr)
+        std::cout << "not find 255" << std::endl;
 
     return 0;
 }
