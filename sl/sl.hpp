@@ -9,7 +9,7 @@ template <class K, class V, int MAX_LEVEL>
 class sl_node {
 public:
     sl_node() { }
-    virtual ~sl_node() { }
+    virtual ~sl_node() { delete[] m_forward; }
 
 private:
     K m_key;
@@ -54,7 +54,6 @@ inline sl<K, V, MAX_LEVEL>::~sl()
     auto p = m_header;
     while (p != nullptr) {
         auto p1 = p->m_forward[0];
-        delete[] p->m_forward;
         delete p;
         p = p1;
     }
