@@ -6,7 +6,7 @@
 #include <iostream>
 
 // multiple writers and single reader
-template <class T>
+template <typename T>
 class cb_ms_spin {
 public:
     cb_ms_spin(int len) : m_max_len(len),
@@ -33,7 +33,7 @@ private:
     spin_lock m_lock;
 };
 
-template <class T>
+template <typename T>
 inline T cb_ms_spin<T>::pop()
 {
     while (m_len == 0);
@@ -54,7 +54,7 @@ inline T cb_ms_spin<T>::pop()
     return retval;
 }
 
-template <class T>
+template <typename T>
 inline void cb_ms_spin<T>::push(const T &val)
 {
     while (m_len == m_max_len);
