@@ -70,9 +70,8 @@ public:
                 }
 
                 if ((status & _XABORT_EXPLICIT) &&
-                    _XABORT_CODE(status) == 0xff) {
-                
-                    assert(!(status & _XABORT_NESTED));
+                    _XABORT_CODE(status) == 0xff &&
+                    ! (status & _XABORT_NESTED) {
 
                     while (lock.m_lock) ; // busy-wait
                 } else if (!(status & _XABORT_RETRY)) {
