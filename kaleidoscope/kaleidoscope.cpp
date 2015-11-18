@@ -2,8 +2,8 @@
 
 ISSPACE(C) (C == (int)' ')
 ISALPHA(C) (('a' <= C && C <= 'z') || ('A' <= C && C <= 'Z'))
-ISNUM(C)   ('0' <= C && C <= '9')
-ISALNUM(C) (ISALPHA(C) || ISNUM(C))
+ISDIGIT(C) ('0' <= C && C <= '9')
+ISALNUM(C) (ISALPHA(C) || ISDIGIT(C))
 
 enum Token {
     tok_eof = -1,
@@ -33,10 +33,45 @@ static int gettok()
         for (;;) {
             LastChar = getchar();
             if (ISALNUM(LastChar)) {
-                
+                IdentifierStr += LastChar;
             } else {
                 break;
             }
         }
+
+        if (IdentifierStr == "def")
+            return tok_def;
+        if (IdentifierStr == "extern")
+            return tok_extern;
+
+        return tok_identifier;
     }
+
+    if (ISDIGIT(LastChar) || LastChar == '.') {
+        std::string NumStr;
+        do {
+            NumStr += LastChar;
+            LastChar = getchar();
+        } while (ISDIGIT(LastChar) || LastChar == '.');
+
+        NumVal = strtod(NumStr.c_str(), 0);
+
+        return tok_number;
+    }
+
+    if (LastChar =='#') {
+        do {
+            LastChar = getchar();
+        } while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+
+        if (LastChar != EOF)
+            return gettok();
+    }
+
+    if (LastChar == EOF)
+        return tok_eof;
+
+    int ThisChar = LastChar;
+    LastChar = getchar();
+    return ThisChar;
 }
