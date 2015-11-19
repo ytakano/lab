@@ -19,6 +19,7 @@ enum Token {
 
 static std::string IdentifierStr;
 static double NumVal;
+static int CurTok;
 
 static int gettok()
 {
@@ -74,4 +75,18 @@ static int gettok()
     int ThisChar = LastChar;
     LastChar = getchar();
     return ThisChar;
+}
+
+static int getNextToken() {
+    return CurTok = gettok();
+}
+
+std::unique_ptr<ExprAST> Error(const char *Str) {
+    fprintf(stderr, "Error: %s\n", Str);
+    return nullptr;
+}
+
+std::unique_ptr<ExprAST> ErrorP(const char *Str) {
+    Error(Str);
+    return nullptr;
 }
