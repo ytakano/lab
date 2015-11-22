@@ -77,16 +77,87 @@ static int gettok()
     return ThisChar;
 }
 
-static int getNextToken() {
+static int getNextToken()
+{
     return CurTok = gettok();
 }
 
-std::unique_ptr<ExprAST> Error(const char *Str) {
+std::unique_ptr<ExprAST> Error(const char *Str)
+{
     fprintf(stderr, "Error: %s\n", Str);
     return nullptr;
 }
 
-std::unique_ptr<ExprAST> ErrorP(const char *Str) {
+std::unique_ptr<ExprAST> ErrorP(const char *Str)
+{
     Error(Str);
     return nullptr;
+}
+
+static std::unique_ptr<ExprAST> ParseNumberExpr() {
+    auto Result = llvm::make_unique<NumberExprAST>(NumVal);
+    getNextToken();
+    return std::move(Result);
+}
+
+static std::unique_ptr<ExprAST> ParseParenExpr()
+{
+    getNextToken();
+    auto V = ParseExpression();
+    if (!V)
+        return nullptr;
+
+    if (CurTok != ')')
+        return Error("expected ')'");
+
+    getNextToken();
+    return V;
+}
+
+static std::unique_ptr<ExprAST> ParseIdentifierExpr()
+{
+    std::string IdName = IdentifierStr;
+
+    getNextToken();
+
+    if (CurTok != '(') // 変数
+        return llvm::make_unique<VariableExprAST>(IdName);
+
+    // 関数呼び出し
+    getNextToken();
+    std::vector<std::unique_ptr<ExprAST>> Args;
+    if (CurTok != ')') {
+        while (1) {
+            if (auto Arg = ParseExpression()) {
+                Args.push_back(std::move(Arg));
+            } else {
+                return nullptr;
+            }
+
+            if (CurTok == ')')
+                break;
+
+            if (CurTok != ',')
+                return Error("Expected ')' or ',' in argument list");
+
+            getNextToken();
+        }
+    }
+
+    getNextToken();
+
+    return llvm::make_unique<CallExprAST>(IdName, std::move(Args));
+}
+
+static std::unique_ptr<ExprAST> ParsePrimary() {
+    switch (CurTok) {
+    default:
+        return Error("unknown token when expecting an expression");
+    case tok_identifier:
+        return ParseIdentifierExpr();
+    case tok_number:
+        return ParseNumberExpr();
+    case '(':
+        return ParseParenExpr();
+    }
 }
