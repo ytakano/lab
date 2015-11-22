@@ -2,6 +2,7 @@
 #define KALEIDOSCOPE_HPP
 
 #include <string>
+#include <vector>
 
 class ExprAST {
 public:
@@ -28,7 +29,7 @@ class BinaryExprAST : public ExprAST {
 public:
     BinaryExprAST(char op, std::unique_ptr<ExprAST> L,
                   std::unique_ptr<ExprAST> R)
-        : Op(op), LHS(std::move(LHS)), RHS(std::move(RHS)) { }
+        : Op(op), LHS(std::move(L)), RHS(std::move(R)) { }
 
 private:
     char Op;
@@ -46,9 +47,9 @@ private:
     std::vector<std::unique_ptr<ExprAST>> Args;
 };
 
-class PrototyeAST {
+class PrototypeAST {
 public:
-    PrototyeAST(const std::string &n, std::vector<std::string> a)
+    PrototypeAST(const std::string &n, std::vector<std::string> a)
         : Name(n), Args(std::move(a)) { }
 
 private:
@@ -58,12 +59,12 @@ private:
 
 class FunctionAST {
 public:
-    FunctionAST(std::unique_ptr<PrototyeAST> p,
+    FunctionAST(std::unique_ptr<PrototypeAST> p,
                 std::unique_ptr<ExprAST> b)
         : Proto(std::move(p)), Body(std::move(b)) { }
 
 private:
-    std::unique_ptr<PrototyeAST> Proto;
+    std::unique_ptr<PrototypeAST> Proto;
     std::unique_ptr<ExprAST> Body;
 };
 
