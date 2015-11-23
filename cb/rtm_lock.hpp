@@ -78,7 +78,7 @@ public:
 
                 if ((status & _XABORT_EXPLICIT) &&
                     _XABORT_CODE(status) == 0xff &&
-                    ! (status & _XABORT_NESTED) {
+                    ! (status & _XABORT_NESTED)) {
 
                     while (lock.m_lock)
                         _MM_PAUSE(); // busy-wait
