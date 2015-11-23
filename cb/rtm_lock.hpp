@@ -6,11 +6,14 @@
 #ifdef __x86_64__
     #include "rtm.h"
     #include "tsx-cpuid.h"
+#endif // __x86_64__
+
+#if defined(__x86_64__) || defined(__i386__)
     #include <xmmintrin.h>
     #define _MM_PAUSE _mm_pause
 #else
     #define _MM_PAUSE
-#endif // __x86_64__
+#endif // __x86_64__ || __i386__
 
 #include <assert.h>
 
