@@ -6,6 +6,10 @@
 #ifdef __x86_64__
     #include "rtm.h"
     #include "tsx-cpuid.h"
+    #include <xmmintrin.h>
+    #define _MM_PAUSE _mm_pause
+#else
+    #define _MM_PAUSE
 #endif // __x86_64__
 
 #include <assert.h>
@@ -73,7 +77,8 @@ public:
                     _XABORT_CODE(status) == 0xff &&
                     ! (status & _XABORT_NESTED) {
 
-                    while (lock.m_lock) ; // busy-wait
+                    while (lock.m_lock)
+                        _MM_PAUSE(); // busy-wait
                 } else if (!(status & _XABORT_RETRY)) {
                     break;
                 }
@@ -82,8 +87,8 @@ public:
 #endif // __x86_64__
 
         while (__sync_lock_test_and_set(&lock.m_lock, 1)) {
-            while (lock.m_lock) ;
-            // busy-wait
+            while (lock.m_lock)
+                _MM_PAUSE(); // busy-wait
         }
     }
 
