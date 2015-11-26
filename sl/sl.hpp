@@ -3,6 +3,27 @@
 
 #include <stdlib.h>
 
+class xorshift {
+public:
+    xorshift() : x(123456789), y(362436069), z(521288629), w(88675123) { }
+
+    void init_xor128(uint32_t s) {
+        x = s = 1812433253U * (s ^ (s >> 30));
+        y = s = 1812433253U * (s ^ (s >> 30)) + 1;
+        z = s = 1812433253U * (s ^ (s >> 30)) + 2;
+        w = s = 1812433253U * (s ^ (s >> 30)) + 3;
+    }
+
+    uint32_t xor128() {
+        uint32_t t = x ^ (x << 11);
+        x = y; y = z; z = w;
+        return (w = (w ^ (w >> 19)) ^ (t ^ (t >> 8)));
+    }
+
+private:
+    uint32_t x, y, z, w;
+};
+
 template <typename K, typename V, int MAX_LEVEL> class sl;
 
 template <typename K, typename V, int MAX_LEVEL>
@@ -34,6 +55,8 @@ private:
     sl_node<K, V, MAX_LEVEL> *m_header;
     uint64_t m_size;
     uint8_t  m_level;
+
+    xorshift m_xs;
 
     uint8_t random_level();
 };
@@ -77,7 +100,7 @@ inline uint8_t sl<K, V, MAX_LEVEL>::random_level()
     max_level = 64 - max_level + 1;
     max_level = max_level > MAX_LEVEL ? MAX_LEVEL : max_level;
 
-    while (lvl < max_level && (rand() / (RAND_MAX + 1.)) < 0.5)
+    while (lvl < max_level && m_xs.xor128() < (UINT32_MAX / 2))
         lvl++;
 
     return lvl;
@@ -178,6 +201,5 @@ inline const V* sl<K, V, MAX_LEVEL>::find(const K &key)
 
     return nullptr;
 }
-
 
 #endif // SL_HPP

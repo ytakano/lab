@@ -23,12 +23,12 @@ public:
 
 private:
     int m_max_len;
-    volatile int m_len;
+    int m_len;
     T *m_buf;
     T *m_buf_end;
 
     T *m_head;
-    volatile T *m_tail;
+    T *m_tail;
 
     spin_lock m_lock;
 };
