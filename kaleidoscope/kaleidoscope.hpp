@@ -7,11 +7,13 @@
 class ExprAST {
 public:
     virtual ~ExprAST() { }
+    virtual Value *codegen() = 0;
 };
 
 class NumberExprAST : public ExprAST {
 public:
     NumberExprAST(double v) : Val(v) { }
+    virtual Value *codegen();
 
 private:
     double Val;

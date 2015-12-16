@@ -29,6 +29,10 @@ static std::map<char, int> BinopPrecedence;
 static std::unique_ptr<ExprAST> ParsePrimary();
 static std::unique_ptr<ExprAST> ParseExpression();
 
+static std::unique_ptr<Module> *TheModule;
+static IRBuilder<> Builder(getGlobalContext());
+static std::map<std::string, Value*> NameValues;
+
 static int gettok()
 {
     static int LastChar = ' ';
@@ -88,6 +92,12 @@ static int gettok()
 static int getNextToken()
 {
     return CurTok = gettok();
+}
+
+Value *ErrorV(const char *Str)
+{
+    Error(Str);
+    return nullptr;
 }
 
 std::unique_ptr<ExprAST> Error(const char *Str)
