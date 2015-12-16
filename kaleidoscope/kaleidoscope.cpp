@@ -1,5 +1,11 @@
 #include "kaleidoscope.hpp"
 
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Verifier.h>
+
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -29,9 +35,9 @@ static std::map<char, int> BinopPrecedence;
 static std::unique_ptr<ExprAST> ParsePrimary();
 static std::unique_ptr<ExprAST> ParseExpression();
 
-static std::unique_ptr<Module> *TheModule;
-static IRBuilder<> Builder(getGlobalContext());
-static std::map<std::string, Value*> NameValues;
+static std::unique_ptr<llvm::Module> TheModule;
+static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
+static std::map<std::string, llvm::Value*> NamedValues;
 
 static int gettok()
 {
@@ -94,12 +100,6 @@ static int getNextToken()
     return CurTok = gettok();
 }
 
-Value *ErrorV(const char *Str)
-{
-    Error(Str);
-    return nullptr;
-}
-
 std::unique_ptr<ExprAST> Error(const char *Str)
 {
     fprintf(stderr, "Error: %s\n", Str);
@@ -112,8 +112,14 @@ std::unique_ptr<PrototypeAST> ErrorP(const char *Str)
     return nullptr;
 }
 
+llvm::Value *ErrorV(const char *Str)
+{
+    Error(Str);
+    return nullptr;
+}
+
 static std::unique_ptr<ExprAST> ParseNumberExpr() {
-    auto Result = std::make_unique<NumberExprAST>(NumVal);
+    auto Result = llvm::make_unique<NumberExprAST>(NumVal);
     getNextToken();
     return std::move(Result);
 }
@@ -164,7 +170,7 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
                 return nullptr;
         }
 
-        LHS = std::make_unique<BinaryExprAST>(BinOp, std::move(LHS),
+        LHS = llvm::make_unique<BinaryExprAST>(BinOp, std::move(LHS),
                                               std::move(RHS));
     }
 }
@@ -185,7 +191,7 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr()
     getNextToken();
 
     if (CurTok != '(') // 変数
-        return std::make_unique<VariableExprAST>(IdName);
+        return llvm::make_unique<VariableExprAST>(IdName);
 
     // 関数呼び出し
     getNextToken();
@@ -210,7 +216,7 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr()
 
     getNextToken();
 
-    return std::make_unique<CallExprAST>(IdName, std::move(Args));
+    return llvm::make_unique<CallExprAST>(IdName, std::move(Args));
 }
 
 static std::unique_ptr<ExprAST> ParsePrimary() {
@@ -245,7 +251,7 @@ static std::unique_ptr<PrototypeAST> ParsePrototype()
 
     getNextToken();
 
-    return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
+    return llvm::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
 }
 
 static std::unique_ptr<FunctionAST> ParseDefinition()
@@ -255,7 +261,7 @@ static std::unique_ptr<FunctionAST> ParseDefinition()
     if (!Proto) return nullptr;
 
     if (auto E = ParseExpression())
-        return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+        return llvm::make_unique<FunctionAST>(std::move(Proto), std::move(E));
 
     return nullptr;
 }
@@ -269,8 +275,8 @@ static std::unique_ptr<PrototypeAST> ParseExtern()
 static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
 {
     if (auto E = ParseExpression()) {
-        auto Proto = std::make_unique<PrototypeAST>("", std::vector<std::string>());
-        return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+        auto Proto = llvm::make_unique<PrototypeAST>("", std::vector<std::string>());
+        return llvm::make_unique<FunctionAST>(std::move(Proto), std::move(E));
     }
     return nullptr;
 }
@@ -323,6 +329,64 @@ static void MainLoop()
             break;
         }
     }
+}
+
+llvm::Value *NumberExprAST::codegen()
+{
+    return llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(Val));
+}
+
+llvm::Value *VariableExprAST::codegen()
+{
+    llvm::Value *V = NamedValues[Name];
+
+    if (!V)
+        ErrorV("Unknown variable name");
+    return V;
+}
+
+llvm::Value *BinaryExprAST::codegen()
+{
+    llvm::Value *L = LHS->codegen();
+    llvm::Value *R = LHS->codegen();
+
+    if (!L || !R)
+        return nullptr;
+
+    switch (Op) {
+    case '+':
+        return Builder.CreateFAdd(L, R, "addtmp");
+    case '-':
+        return Builder.CreateFSub(L, R, "subtmp");
+    case '*':
+        return Builder.CreateFMul(L, R, "multmp");
+    case '<':
+        L = Builder.CreateFCmpULT(L, R, "cmptmp");
+        return Builder.CreateUIToFP(L,
+                                    llvm::Type::getDoubleTy(llvm::getGlobalContext()),
+                                    "booltmp");
+    default:
+        return ErrorV("invalid binary operator");
+    }
+}
+
+llvm::Value *CallExprAST::codegen()
+{
+    llvm::Function *CalleeF = TheModule->getFunction(Callee);
+    if (!CalleeF)
+        return ErrorV("Unknown function referenced");
+
+    if (CalleeF->arg_size() != Args.size())
+        return ErrorV("Incorrect # arguments passed");
+
+    std::vector<llvm::Value*> ArgsV;
+    for (unsigned i = 0, e = Args.size(); i != e; ++i) {
+        ArgsV.push_back(Args[i]->codegen());
+        if (!ArgsV.back())
+            return nullptr;
+    }
+
+    return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
 int main()

@@ -1,19 +1,23 @@
 #ifndef KALEIDOSCOPE_HPP
 #define KALEIDOSCOPE_HPP
 
+#include <stdint.h>
+
+#include <llvm/IR/Value.h>
+
 #include <string>
 #include <vector>
 
 class ExprAST {
 public:
     virtual ~ExprAST() { }
-    virtual Value *codegen() = 0;
+    virtual llvm::Value *codegen() = 0;
 };
 
 class NumberExprAST : public ExprAST {
 public:
     NumberExprAST(double v) : Val(v) { }
-    virtual Value *codegen();
+    virtual llvm::Value *codegen() override;
 
 private:
     double Val;
@@ -22,6 +26,7 @@ private:
 class VariableExprAST : public ExprAST {
 public:
     VariableExprAST(const std::string &n) : Name(n) { }
+    virtual llvm::Value *codegen() override;
 
 private:
     std::string Name;
@@ -33,6 +38,8 @@ public:
                   std::unique_ptr<ExprAST> R)
         : Op(op), LHS(std::move(L)), RHS(std::move(R)) { }
 
+    virtual llvm::Value *codegen() override;
+
 private:
     char Op;
     std::unique_ptr<ExprAST> LHS, RHS;
@@ -43,6 +50,8 @@ public:
     CallExprAST(const std::string &c,
                 std::vector<std::unique_ptr<ExprAST>> a)
         : Callee(c), Args(std::move(a)) { }
+
+    virtual llvm::Value *codegen() override;
 
 private:
     std::string Callee;
