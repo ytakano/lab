@@ -283,8 +283,11 @@ static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
 
 static void HandleDefinition()
 {
-    if (ParseDefinition()) {
-        fprintf(stderr, "Parsed a function definition\n");
+    if (auto FnAST = ParseDefinition()) {
+        if (auto *FnIR = FnAST->codegen()) {
+            fprintf(stderr, "Parsed a function definition\n");
+            FnIR->dump();
+        }
     } else {
         getNextToken();
     }
@@ -292,8 +295,11 @@ static void HandleDefinition()
 
 static void HandleExtern()
 {
-    if (ParseExtern()) {
-        fprintf(stderr, "Parsed an extern\n");
+    if (auto ProtoAST = ParseExtern()) {
+        if (auto FnIR = ProtoAST->codegen()) {
+            fprintf(stderr, "Parsed an extern\n");
+            FnIR->dump();
+        }
     } else {
         getNextToken();
     }
@@ -301,8 +307,11 @@ static void HandleExtern()
 
 static void HandleTopLevelExpression()
 {
-    if (ParseTopLevelExpr()) {
-        fprintf(stderr, "Parsed a top-level expr\n");
+    if (auto FnAST = ParseTopLevelExpr()) {
+        if (auto *FnIR = FnAST->codegen()) {
+            fprintf(stderr, "Parsed a top-level expr\n");
+            FnIR->dump();
+        }
     } else {
         getNextToken();
     }
@@ -348,7 +357,7 @@ llvm::Value *VariableExprAST::codegen()
 llvm::Value *BinaryExprAST::codegen()
 {
     llvm::Value *L = LHS->codegen();
-    llvm::Value *R = LHS->codegen();
+    llvm::Value *R = RHS->codegen();
 
     if (!L || !R)
         return nullptr;
@@ -389,6 +398,55 @@ llvm::Value *CallExprAST::codegen()
     return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
+llvm::Function *PrototypeAST::codegen()
+{
+    std::vector<llvm::Type*> Doubles(Args.size(),
+                                     llvm::Type::getDoubleTy(llvm::getGlobalContext()));
+    llvm::FunctionType *FT = llvm::FunctionType::get(llvm::Type::getDoubleTy(llvm::getGlobalContext()), Doubles, false);
+
+    llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, Name, TheModule.get());
+
+    unsigned idx = 0;
+    for (auto &Arg: F->args())
+        Arg.setName(Args[idx++]);
+
+    return F;
+}
+
+llvm::Function *FunctionAST::codegen()
+{
+    llvm::Function *TheFunction = TheModule->getFunction(Proto->getName());
+
+    // プロトタイプ宣言されていなかったら、関数宣言を行う
+    if (! TheFunction)
+        TheFunction = Proto->codegen();
+
+    if (! TheFunction)
+        return nullptr;
+
+    if (! TheFunction->empty())
+        return (llvm::Function*)ErrorV("Function cannot be redefined.");
+
+    llvm::BasicBlock *BB = llvm::BasicBlock::Create(llvm::getGlobalContext(),
+                                                    "entry",
+                                                    TheFunction);
+    Builder.SetInsertPoint(BB);
+
+    NamedValues.clear();
+    for (auto &Arg: TheFunction->args())
+        NamedValues[Arg.getName()] = &Arg;
+
+    if (llvm::Value *RetVal = Body->codegen()) {
+        Builder.CreateRet(RetVal);
+        verifyFunction(*TheFunction);
+        return TheFunction;
+    }
+
+    // error
+    TheFunction->eraseFromParent();
+    return nullptr;
+}
+
 int main()
 {
     BinopPrecedence['<'] = 10;
@@ -398,6 +456,9 @@ int main()
 
     fprintf(stderr, "ready> ");
     getNextToken();
+
+    TheModule = llvm::make_unique<llvm::Module>("my cool jit",
+                                                llvm::getGlobalContext());
 
     MainLoop();
 

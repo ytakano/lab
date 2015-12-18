@@ -63,6 +63,9 @@ public:
     PrototypeAST(const std::string &n, std::vector<std::string> a)
         : Name(n), Args(std::move(a)) { }
 
+    llvm::Function *codegen();
+    const std::string &getName() const { return Name; }
+
 private:
     std::string Name;
     std::vector<std::string> Args;
@@ -73,6 +76,8 @@ public:
     FunctionAST(std::unique_ptr<PrototypeAST> p,
                 std::unique_ptr<ExprAST> b)
         : Proto(std::move(p)), Body(std::move(b)) { }
+
+    llvm::Function *codegen();
 
 private:
     std::unique_ptr<PrototypeAST> Proto;
