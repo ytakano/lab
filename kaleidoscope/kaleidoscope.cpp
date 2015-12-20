@@ -1,10 +1,17 @@
 #include "kaleidoscope.hpp"
 
+#include <llvm/Analysis/Passes.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 
 #include <stdlib.h>
 #include <ctype.h>
@@ -14,6 +21,8 @@
 #include <cstdio>
 #include <map>
 #include <memory>
+
+#include "MCJITHelper.hpp"
 
 enum Token {
     tok_eof = -1,
@@ -35,9 +44,10 @@ static std::map<char, int> BinopPrecedence;
 static std::unique_ptr<ExprAST> ParsePrimary();
 static std::unique_ptr<ExprAST> ParseExpression();
 
-static std::unique_ptr<llvm::Module> TheModule;
 static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
 static std::map<std::string, llvm::Value*> NamedValues;
+static std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
+static MCJITHelper *JITHelper;
 
 static int gettok()
 {
@@ -98,24 +108,6 @@ static int gettok()
 static int getNextToken()
 {
     return CurTok = gettok();
-}
-
-std::unique_ptr<ExprAST> Error(const char *Str)
-{
-    fprintf(stderr, "Error: %s\n", Str);
-    return nullptr;
-}
-
-std::unique_ptr<PrototypeAST> ErrorP(const char *Str)
-{
-    Error(Str);
-    return nullptr;
-}
-
-llvm::Value *ErrorV(const char *Str)
-{
-    Error(Str);
-    return nullptr;
 }
 
 static std::unique_ptr<ExprAST> ParseNumberExpr() {
@@ -309,8 +301,12 @@ static void HandleTopLevelExpression()
 {
     if (auto FnAST = ParseTopLevelExpr()) {
         if (auto *FnIR = FnAST->codegen()) {
-            fprintf(stderr, "Parsed a top-level expr\n");
             FnIR->dump();
+            
+            void *FPtr = JITHelper->getPointerToFunction(FnIR);
+
+            double (*FP)() = (double (*)())(intptr_t)FPtr;
+            fprintf(stderr, "Evaluated to %f\n", FP());
         }
     } else {
         getNextToken();
@@ -381,7 +377,7 @@ llvm::Value *BinaryExprAST::codegen()
 
 llvm::Value *CallExprAST::codegen()
 {
-    llvm::Function *CalleeF = TheModule->getFunction(Callee);
+    llvm::Function *CalleeF = JITHelper->getFunction(Callee);
     if (!CalleeF)
         return ErrorV("Unknown function referenced");
 
@@ -404,28 +400,50 @@ llvm::Function *PrototypeAST::codegen()
                                      llvm::Type::getDoubleTy(llvm::getGlobalContext()));
     llvm::FunctionType *FT = llvm::FunctionType::get(llvm::Type::getDoubleTy(llvm::getGlobalContext()), Doubles, false);
 
-    llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, Name, TheModule.get());
+    std::string FnName = MakeLegalFunctionName(Name);
 
+    llvm::Module *M = JITHelper->getModuleForNewFunction();
+
+    llvm::Function *F = llvm::Function::Create(FT,
+                                               llvm::Function::ExternalLinkage,
+                                               FnName,
+                                               M);
+
+    // If F conflicted, there was already something named 'Name'.  If it has a
+    // body, don't allow redefinition or reextern.
+    if (F->getName() != FnName) {
+        // Delete the one we just made and get the existing one.
+        F->eraseFromParent();
+        F = JITHelper->getFunction(Name);
+        // If F already has a body, reject this.
+        if (!F->empty()) {
+            ErrorF("redefinition of function");
+            return 0;
+        }
+
+        // If F took a different number of args, reject.
+        if (F->arg_size() != Args.size()) {
+            ErrorF("redefinition of function with different # args");
+            return 0;
+        }
+    }
+    
     unsigned idx = 0;
-    for (auto &Arg: F->args())
+    for (auto &Arg: F->args()) {
         Arg.setName(Args[idx++]);
+
+        NamedValues[Args[idx]] = &Arg;
+    }
 
     return F;
 }
 
 llvm::Function *FunctionAST::codegen()
 {
-    llvm::Function *TheFunction = TheModule->getFunction(Proto->getName());
-
-    // プロトタイプ宣言されていなかったら、関数宣言を行う
-    if (! TheFunction)
-        TheFunction = Proto->codegen();
+    llvm::Function *TheFunction = Proto->codegen();
 
     if (! TheFunction)
         return nullptr;
-
-    if (! TheFunction->empty())
-        return (llvm::Function*)ErrorV("Function cannot be redefined.");
 
     llvm::BasicBlock *BB = llvm::BasicBlock::Create(llvm::getGlobalContext(),
                                                     "entry",
@@ -433,6 +451,7 @@ llvm::Function *FunctionAST::codegen()
     Builder.SetInsertPoint(BB);
 
     NamedValues.clear();
+
     for (auto &Arg: TheFunction->args())
         NamedValues[Arg.getName()] = &Arg;
 
@@ -449,16 +468,20 @@ llvm::Function *FunctionAST::codegen()
 
 int main()
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    llvm::LLVMContext &Context = llvm::getGlobalContext();
+    JITHelper = new MCJITHelper(Context);
+    
     BinopPrecedence['<'] = 10;
     BinopPrecedence['+'] = 20;
     BinopPrecedence['-'] = 20;
-    BinopPrecedence['*'] = 40;
+    BinopPrecedence['*'] = 40; // hightest
 
     fprintf(stderr, "ready> ");
     getNextToken();
-
-    TheModule = llvm::make_unique<llvm::Module>("my cool jit",
-                                                llvm::getGlobalContext());
 
     MainLoop();
 

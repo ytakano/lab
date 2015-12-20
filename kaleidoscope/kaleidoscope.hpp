@@ -84,4 +84,28 @@ private:
     std::unique_ptr<ExprAST> Body;
 };
 
+
+std::unique_ptr<ExprAST> Error(const char *Str)
+{
+    fprintf(stderr, "Error: %s\n", Str);
+    return nullptr;
+}
+
+std::unique_ptr<PrototypeAST> ErrorP(const char *Str)
+{
+    Error(Str);
+    return nullptr;
+}
+
+llvm::Value *ErrorV(const char *Str)
+{
+    Error(Str);
+    return nullptr;
+}
+
+FunctionAST *ErrorF(const char *Str) {
+  Error(Str);
+  return 0;
+}
+
 #endif // KALEIDOSCOPE_HPP
