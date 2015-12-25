@@ -34,6 +34,11 @@ enum Token {
     // primary
     tok_identifier = -4,
     tok_number     = -5,
+
+    // control
+    tok_if   = -6;
+    tok_then = -7;
+    tok_else = -8;
 };
 
 static std::string IdentifierStr;
@@ -72,6 +77,12 @@ static int gettok()
             return tok_def;
         if (IdentifierStr == "extern")
             return tok_extern;
+        if (IdentifierStr == "if")
+            return tok_if;
+        if (IdentifierStr == "then")
+            return tok_then;
+        if (IdentifierStr == "else")
+            return tok_else;
 
         return tok_identifier;
     }
@@ -221,6 +232,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
         return ParseNumberExpr();
     case '(':
         return ParseParenExpr();
+    case tok_if:
+        return ParseIfExpr();
     }
 }
 
@@ -262,6 +275,34 @@ static std::unique_ptr<PrototypeAST> ParseExtern()
 {
     getNextToken();
     return ParsePrototype();
+}
+
+static std::unique_ptr<ExprAST> ParseIfExpr()
+{
+    getNextToken(); // eat the if.
+    
+    // condition
+    auto Cond = ParseExpression();
+    if (!Cond)
+        return nullptr;
+
+    if (CurTok != tok_then)
+        return Error("expected then");
+    getNextToken(); // eat the then
+    
+    auto Then = ParseExpression();
+    if (!Then)
+        return nullptr;
+    
+    if (CurTok != tok_else)
+        return Error("expected else");
+    getNextToken(); // eat the else
+
+    auto Else = ParseExpression();
+    if (!Else)
+        return nullptr;
+    
+    return llvm::make_unique<IfExprAST>(std::move(Cond), std::move(Then), std::move(Else));
 }
 
 static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
