@@ -36,9 +36,9 @@ enum Token {
     tok_number     = -5,
 
     // control
-    tok_if   = -6;
-    tok_then = -7;
-    tok_else = -8;
+    tok_if   = -6,
+    tok_then = -7,
+    tok_else = -8,
 };
 
 static std::string IdentifierStr;
@@ -48,6 +48,7 @@ static std::map<char, int> BinopPrecedence;
 
 static std::unique_ptr<ExprAST> ParsePrimary();
 static std::unique_ptr<ExprAST> ParseExpression();
+static std::unique_ptr<ExprAST> ParseIfExpr();
 
 static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
 static std::map<std::string, llvm::Value*> NamedValues;
@@ -505,6 +506,56 @@ llvm::Function *FunctionAST::codegen()
     // error
     TheFunction->eraseFromParent();
     return nullptr;
+}
+
+llvm::Value *IfExprAST::codegen()
+{
+    llvm::Value *CondV = Cond->codegen();
+    if (!CondV)
+        return nullptr;
+
+    CondV = Builder.CreateFCmpONE(CondV, llvm::ConstantFP::get(llvm::getGlobalContext(),
+                                  llvm::APFloat(0.0)), "ifcond");
+    
+    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    
+    llvm::BasicBlock *ThenBB  = llvm::BasicBlock::Create(llvm::getGlobalContext(), "then", TheFunction);
+    llvm::BasicBlock *ElseBB  = llvm::BasicBlock::Create(llvm::getGlobalContext(), "else");
+    llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "ifcont");
+    
+    Builder.CreateCondBr(CondV, ThenBB, ElseBB);
+    
+    // then
+    Builder.SetInsertPoint(ThenBB);
+    
+    llvm::Value *ThenV = Then->codegen();
+    if (!ThenV)
+        return nullptr;
+    
+    Builder.CreateBr(MergeBB);
+    ThenBB = Builder.GetInsertBlock();
+    
+    // else
+    TheFunction->getBasicBlockList().push_back(ElseBB);
+    Builder.SetInsertPoint(ElseBB);
+    
+    llvm::Value *ElseV = Else->codegen();
+    if (!ElseV)
+        return nullptr;
+    
+    Builder.CreateBr(MergeBB);
+    ElseBB = Builder.GetInsertBlock();
+    
+    // merge
+    TheFunction->getBasicBlockList().push_back(MergeBB);
+    Builder.SetInsertPoint(MergeBB);
+    
+    llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(llvm::getGlobalContext()), 2, "iftmp");
+    
+    PN->addIncoming(ThenV, ThenBB);
+    PN->addIncoming(ElseV, ElseBB);
+    
+    return PN;
 }
 
 int main()
