@@ -39,6 +39,8 @@ enum Token {
     tok_if   = -6,
     tok_then = -7,
     tok_else = -8,
+    tok_for  = -9,
+    tok_in   = -10,
 };
 
 static std::string IdentifierStr;
@@ -49,6 +51,7 @@ static std::map<char, int> BinopPrecedence;
 static std::unique_ptr<ExprAST> ParsePrimary();
 static std::unique_ptr<ExprAST> ParseExpression();
 static std::unique_ptr<ExprAST> ParseIfExpr();
+static std::unique_ptr<ExprAST> ParseForExpr();
 
 static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
 static std::map<std::string, llvm::Value*> NamedValues;
@@ -84,6 +87,10 @@ static int gettok()
             return tok_then;
         if (IdentifierStr == "else")
             return tok_else;
+        if (IdentifierStr == "for")
+            return tok_for;
+        if (IdentifierStr == "in")
+            return tok_in;
 
         return tok_identifier;
     }
@@ -235,6 +242,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
         return ParseParenExpr();
     case tok_if:
         return ParseIfExpr();
+    case tok_for:
+        return ParseForExpr();
     }
 }
 
@@ -304,6 +313,53 @@ static std::unique_ptr<ExprAST> ParseIfExpr()
         return nullptr;
     
     return llvm::make_unique<IfExprAST>(std::move(Cond), std::move(Then), std::move(Else));
+}
+
+static std::unique_ptr<ExprAST> ParseForExpr()
+{
+    getNextToken(); // eat for
+    
+    if (CurTok != tok_identifier)
+        return Error("expected identifier after for");
+    
+    std::string IdName = IdentifierStr;
+    getNextToken(); // eat identifier
+    
+    if (CurTok != '=')
+        return Error("expected '=' after for");
+    getNextToken(); // eat '='
+    
+    
+    auto Start = ParseExpression();
+    if (!Start)
+        return nullptr;
+    if (CurTok != ',')
+        return Error("expected ',' after for start value");
+    getNextToken();
+    
+    auto End = ParseExpression();
+    if (!End)
+        return nullptr;
+    
+    // the step value is optional
+    std::unique_ptr<ExprAST> Step;
+    if (CurTok == ',') {
+        getNextToken();
+        Step = ParseExpression();
+        if (!Step)
+            return nullptr;
+    }
+    
+    if (CurTok != tok_in)
+        return Error("expected 'in' after for");
+    getNextToken(); // eat 'in'
+    
+    auto Body = ParseExpression();
+    if (!Body)
+        return nullptr;
+    
+    return llvm::make_unique<ForExprAST>(IdName, std::move(Start), std::move(End),
+                                         std::move(Step), std::move(Body));
 }
 
 static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
@@ -505,6 +561,11 @@ llvm::Function *FunctionAST::codegen()
 
     // error
     TheFunction->eraseFromParent();
+    return nullptr;
+}
+
+llvm::Value *ForExprAST::codegen()
+{
     return nullptr;
 }
 
