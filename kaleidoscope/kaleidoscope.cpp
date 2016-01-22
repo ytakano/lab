@@ -566,7 +566,69 @@ llvm::Function *FunctionAST::codegen()
 
 llvm::Value *ForExprAST::codegen()
 {
-    return nullptr;
+    // start code
+    llvm::Value *StartVal = Start->codegen();
+    if (StartVal == 0)
+        return 0;
+    
+    // loop header
+    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *PreheaderBB = Builder.GetInsertBlock();
+    llvm::BasicBlock *LoopBB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "loop", TheFunction);
+    
+    // terminate with branch
+    Builder.CreateBr(LoopBB);
+    
+    
+    // LoopBB
+    Builder.SetInsertPoint(LoopBB);
+    
+    llvm::PHINode *Variable = Builder.CreatePHI(llvm::Type::getDoubleTy(llvm::getGlobalContext()),
+                                                2, VarName.c_str());
+    Variable->addIncoming(StartVal, PreheaderBB);
+    
+    // shadowing
+    llvm::Value *OldVal = NamedValues[VarName];
+    NamedValues[VarName] = Variable;
+    
+    if (!Body->codegen())
+        return nullptr; 
+    
+    // step value
+    llvm::Value *StepVal = nullptr;
+    if (Step) {
+        StepVal = Step->codegen();
+        if (!StepVal)
+            return nullptr;
+    } else {
+        StepVal = llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(1.0));
+    }
+    
+    llvm::Value *NextVar = Builder.CreateFAdd(Variable, StepVal, "nextvar");
+    
+    // compute end condtion
+    llvm::Value *EndCond = End->codegen();
+    if (!EndCond)
+        return nullptr;
+    
+    EndCond = Builder.CreateFCmpONE(EndCond, llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(0.0)), "loopcond");
+    
+    // after loop
+    llvm::BasicBlock *LoopEndBB = Builder.GetInsertBlock();
+    llvm::BasicBlock *AfterBB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "afterloop", TheFunction);
+    
+    Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+    
+    Builder.SetInsertPoint(AfterBB);
+    
+    Variable->addIncoming(NextVar, LoopEndBB);
+    
+    if (OldVal)
+        NamedValues[VarName] = OldVal;
+    else
+        NamedValues.erase(VarName);
+    
+    return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(llvm::getGlobalContext()));
 }
 
 llvm::Value *IfExprAST::codegen()
@@ -617,6 +679,11 @@ llvm::Value *IfExprAST::codegen()
     PN->addIncoming(ElseV, ElseBB);
     
     return PN;
+}
+
+extern "C" double putchard(double X) {
+  fputc((char)X, stderr);
+  return 0;
 }
 
 int main()
