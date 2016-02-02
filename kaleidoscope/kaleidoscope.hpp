@@ -27,6 +27,8 @@ class VariableExprAST : public ExprAST {
 public:
     VariableExprAST(const std::string &n) : Name(n) { }
     virtual llvm::Value *codegen() override;
+    
+    const std::string& getName() { return Name; }
 
 private:
     std::string Name;
