@@ -520,6 +520,23 @@ llvm::Value *VariableExprAST::codegen()
 
 llvm::Value *BinaryExprAST::codegen()
 {
+    if (Op == '=') {
+        VariableExprAST *LHSE = (VariableExprAST*)(LHS.get());
+        if (!LHSE)
+            return ErrorV("destination of '=' must be a variable");
+
+        llvm::Value *Val = RHS->codegen();
+        if (!Val)
+            return nullptr;
+        
+        llvm::Value *Variable = NamedValues[LHSE->getName()];
+        if (!Variable)
+            return ErrorV("Unknown variable name");
+        
+        Builder.CreateStore(Val, Variable);
+        return Val;
+    }
+
     llvm::Value *L = LHS->codegen();
     llvm::Value *R = RHS->codegen();
 
@@ -793,6 +810,7 @@ int main()
     llvm::LLVMContext &Context = llvm::getGlobalContext();
     JITHelper = new MCJITHelper(Context);
     
+    BinopPrecedence['='] = 2;
     BinopPrecedence['<'] = 10;
     BinopPrecedence['+'] = 20;
     BinopPrecedence['-'] = 20;
