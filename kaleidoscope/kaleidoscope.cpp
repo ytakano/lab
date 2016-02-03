@@ -59,7 +59,7 @@ static std::unique_ptr<ExprAST> ParseForExpr();
 static std::unique_ptr<ExprAST> ParseUnary();
 
 static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
-static std::map<std::string, llvm::Value*> NamedValues;
+static std::map<std::string, llvm::AllocaInst*> NamedValues;
 static std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
 static MCJITHelper *JITHelper;
 
@@ -136,6 +136,13 @@ static int gettok()
 static int getNextToken()
 {
     return CurTok = gettok();
+}
+
+static llvm::AllocaInst *CreateEntryBlockAlloca(llvm::Function *TheFunction,
+                                                const std::string &VarName)
+{
+    llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
+    return TmpB.CreateAlloca(llvm::Type::getDoubleTy(llvm::getGlobalContext()), 0, VarName.c_str());
 }
 
 static std::unique_ptr<ExprAST> ParseNumberExpr() {
@@ -315,7 +322,6 @@ static std::unique_ptr<PrototypeAST> ParsePrototype()
     if (Kind && ArgNames.size() != Kind)
         return ErrorP("Invalid number of operands for operator");
 
-    printf("function name: %s\n", FnName.c_str());
     return llvm::make_unique<PrototypeAST>(FnName, std::move(ArgNames), Kind != 0, BinaryPrecedence);
 }
 
@@ -505,11 +511,11 @@ llvm::Value *NumberExprAST::codegen()
 
 llvm::Value *VariableExprAST::codegen()
 {
-    llvm::Value *V = NamedValues[Name];
-
+    llvm::AllocaInst *V = NamedValues[Name];
     if (!V)
         ErrorV("Unknown variable name");
-    return V;
+    
+    return Builder.CreateLoad(V, Name.c_str());
 }
 
 llvm::Value *BinaryExprAST::codegen()
@@ -537,7 +543,6 @@ llvm::Value *BinaryExprAST::codegen()
     }
     
     std::string FnName = MakeLegalFunctionName(std::string("binary") + Op);
-    printf("function name: %s\n", FnName.c_str());
     llvm::Function *F = JITHelper->getFunction(FnName);
     assert(F && "binary operator not found!");
     
@@ -601,8 +606,6 @@ llvm::Function *PrototypeAST::codegen()
     unsigned idx = 0;
     for (auto &Arg: F->args()) {
         Arg.setName(Args[idx++]);
-
-        NamedValues[Args[idx]] = &Arg;
     }
 
     return F;
@@ -624,8 +627,13 @@ llvm::Function *FunctionAST::codegen()
 
     NamedValues.clear();
 
-    for (auto &Arg: TheFunction->args())
-        NamedValues[Arg.getName()] = &Arg;
+    for (auto &Arg: TheFunction->args()) {
+        llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, Arg.getName());
+        
+        Builder.CreateStore(&Arg, Alloca);
+        
+        NamedValues[Arg.getName()] = Alloca;
+    }
 
     if (llvm::Value *RetVal = Body->codegen()) {
         Builder.CreateRet(RetVal);
@@ -639,31 +647,30 @@ llvm::Function *FunctionAST::codegen()
 }
 
 llvm::Value *ForExprAST::codegen()
-{
+{   
+    // loop header
+    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    
+    llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
+    
     // start code
     llvm::Value *StartVal = Start->codegen();
     if (StartVal == 0)
         return 0;
+
+    Builder.CreateStore(StartVal, Alloca);        
     
-    // loop header
-    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *PreheaderBB = Builder.GetInsertBlock();
     llvm::BasicBlock *LoopBB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "loop", TheFunction);
     
     // terminate with branch
-    Builder.CreateBr(LoopBB);
-    
+    Builder.CreateBr(LoopBB);    
     
     // LoopBB
     Builder.SetInsertPoint(LoopBB);
     
-    llvm::PHINode *Variable = Builder.CreatePHI(llvm::Type::getDoubleTy(llvm::getGlobalContext()),
-                                                2, VarName.c_str());
-    Variable->addIncoming(StartVal, PreheaderBB);
-    
     // shadowing
-    llvm::Value *OldVal = NamedValues[VarName];
-    NamedValues[VarName] = Variable;
+    llvm::AllocaInst *OldVal = NamedValues[VarName];
+    NamedValues[VarName] = Alloca;
     
     if (!Body->codegen())
         return nullptr; 
@@ -678,24 +685,23 @@ llvm::Value *ForExprAST::codegen()
         StepVal = llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(1.0));
     }
     
-    llvm::Value *NextVar = Builder.CreateFAdd(Variable, StepVal, "nextvar");
-    
     // compute end condtion
     llvm::Value *EndCond = End->codegen();
     if (!EndCond)
         return nullptr;
+
+    llvm::Value *CurVar  = Builder.CreateLoad(Alloca, VarName.c_str());
+    llvm::Value *NextVar = Builder.CreateFAdd(CurVar, StepVal, "nextvar");
+    Builder.CreateStore(NextVar, Alloca);
     
     EndCond = Builder.CreateFCmpONE(EndCond, llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(0.0)), "loopcond");
     
     // after loop
-    llvm::BasicBlock *LoopEndBB = Builder.GetInsertBlock();
     llvm::BasicBlock *AfterBB = llvm::BasicBlock::Create(llvm::getGlobalContext(), "afterloop", TheFunction);
     
     Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
     
     Builder.SetInsertPoint(AfterBB);
-    
-    Variable->addIncoming(NextVar, LoopEndBB);
     
     if (OldVal)
         NamedValues[VarName] = OldVal;
