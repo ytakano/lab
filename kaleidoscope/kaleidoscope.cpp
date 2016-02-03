@@ -45,6 +45,9 @@ enum Token {
     // operators
     tok_binary = -11,
     tok_unary  = -12,
+    
+    // var definition
+    tok_var = -13,
 };
 
 static std::string IdentifierStr;
@@ -100,6 +103,8 @@ static int gettok()
             return tok_binary;
         if (IdentifierStr == "unary")
             return tok_unary;
+        if (IdentifierStr == "var")
+            return tok_var;
 
         return tok_identifier;
     }
@@ -246,7 +251,51 @@ static std::unique_ptr<ExprAST> ParseIdentifierExpr()
     return llvm::make_unique<CallExprAST>(IdName, std::move(Args));
 }
 
-static std::unique_ptr<ExprAST> ParsePrimary() {
+static std::unique_ptr<ExprAST> ParseVarExpr()
+{
+    getNextToken(); // eat the var
+    
+    std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
+    
+    if (CurTok != tok_identifier)
+        return Error("expected identifier after var");
+    
+    while (1) {
+        std::string Name = IdentifierStr;
+        getNextToken(); // eat identifier
+        
+        std::unique_ptr<ExprAST> Init;
+        if (CurTok == '=') {
+            getNextToken(); // eat the '='
+            
+            Init = ParseExpression();
+            if (!Init)
+                return nullptr;
+        }
+        
+        VarNames.push_back(std::make_pair(Name, std::move(Init)));
+        
+        if (CurTok != ',')
+            break;
+        getNextToken(); // eat the ','
+        
+        if (CurTok != tok_identifier)
+            return Error("expected identifier list after var");
+    }
+    
+    if (CurTok != tok_in)
+        return Error("expected 'in' keyword after 'var'");
+    getNextToken(); // eat 'in'
+    
+    auto Body = ParseExpression();
+    if (!Body)
+        return nullptr;
+    
+    return llvm::make_unique<VarExprAST>(std::move(VarNames), std::move(Body));
+}
+
+static std::unique_ptr<ExprAST> ParsePrimary()
+{
     switch (CurTok) {
     default:
         return Error("unknown token when expecting an expression");
@@ -260,6 +309,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
         return ParseIfExpr();
     case tok_for:
         return ParseForExpr();
+    case tok_var:
+        return ParseVarExpr();
     }
 }
 
@@ -789,6 +840,43 @@ llvm::Value *UnaryExprAST::codegen()
         return ErrorV("Unknown unary operator");
     
     return Builder.CreateCall(F, OperandV, "unop");
+}
+
+llvm::Value *VarExprAST::codegen()
+{
+    std::vector<llvm::AllocaInst*> OldBindings;
+    
+    llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    
+    for (unsigned i = 0, e = VarNames.size(); i != e; ++i) {
+        const std::string &VarName = VarNames[i].first;
+        ExprAST *Init = VarNames[i].second.get();
+        
+        llvm::Value *InitVal;
+        if (Init) {
+            InitVal = Init->codegen();
+            if (!InitVal)
+                return nullptr;
+        } else {
+            InitVal = llvm::ConstantFP::get(llvm::getGlobalContext(), llvm::APFloat(0.0));
+        }
+        
+        llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
+        Builder.CreateStore(InitVal, Alloca);
+        
+        OldBindings.push_back(NamedValues[VarName]);
+        
+        NamedValues[VarName] = Alloca;
+    }
+    
+    llvm::Value *BodyVal = Body->codegen();
+    if (!BodyVal)
+        return nullptr;
+    
+    for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
+        NamedValues[VarNames[i].first] = OldBindings[i];
+    
+    return BodyVal;
 }
 
 extern "C" double putchard(double X) {
