@@ -23,7 +23,7 @@ public:
 
 private:
     int m_max_len;
-    int m_len;
+    volatile int m_len;
     T *m_buf;
     T *m_buf_end;
 
