@@ -7,7 +7,7 @@
 #include <iostream>
 #include <thread>
 
-cb_ms_spin<uint64_t> q(1024 * 1024);
+cb_ms_spin<uint64_t> q(4096);
 //cb_ms<uint64_t> q(1024 * 1024);
 //cb<uint64_t> q(1024 * 1024);
 
